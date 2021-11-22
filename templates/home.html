@@ -1,0 +1,319 @@
+{% extends "layout.html" %}
+{% block content %}
+    <h1>{{ ticker }} in USD</h1>
+    <div id="chart"></div>
+    <div id="macd"><h1 id="macd_title"></h1></div>
+    <div id="rsi"><h1 id="rsi_title"></h1></div>
+    <div id="form">
+        <form method="POST" action="">
+            {{ form.hidden_tag() }}
+            <fieldset class="form-group">
+                <div class="form-group">
+                    {{ form.ticker.label(class="form-control-label") }}
+                    {{ form.ticker(class="form-control") }}
+                </div>
+                <div class="form-group">
+                    {{ form.start_date.label(class="form-control-label") }}
+                    {{ form.start_date(class="form-control") }}
+                </div>
+                <div class="form-group">
+                    {{ form.end_date.label(class="form-control-label") }}
+                    {{ form.end_date(class="form-control") }}
+                </div>
+                <div class="form-group">
+                    {{ form.ma(class="form-check-input") }}
+                    {{ form.ma.label(class="form-check-input-label") }}
+                </div>
+                <div class="form-group">
+                    {{ form.delta.label(class="form-control-label") }}
+                    {{ form.delta(class="form-control") }}
+                </div>
+                <div class="form-group">
+                    {{ form.macd(class="form-check-input") }}
+                    {{ form.macd.label(class="form-check-input-label") }}
+                </div>
+                <div class="form-group">
+                    {{ form.rsi(class="form-check-input") }}
+                    {{ form.rsi.label(class="form-check-input-label") }}
+                </div>
+                    {{ form.refresh(class="btn btn-outline-dark") }}
+                </div>
+            </fieldset>
+        </form>
+    </div>
+
+    <script>
+        var ma = "{{ ma }}" === "True";
+        var macd = "{{ macd }}" === "True";
+        var rsi = "{{ rsi }}" === "True";
+        var prices =  JSON.parse("{{ prices }}");
+        var dates = "{{ dates }}".replaceAll("&#34;","\"");
+        dates = JSON.parse(dates)
+        dates_parsed = []
+        for (const date of dates) {
+            dates_parsed.push(d3.timeParse("%Y-%m-%d")(date))
+        }
+        dates = dates_parsed
+
+        // set the dimensions and margins of the graph
+        var margin = {top: 10, right: 30, bottom: 30, left: 60},
+            width = 1200 - margin.left - margin.right,
+            height = 500 - margin.top - margin.bottom;
+
+        const svg = d3.select("#chart")
+                      .append("svg")
+                        .attr("width", width + margin.left + margin.right)
+                        .attr("height", height + margin.top + margin.bottom)
+                      .append("g")
+                        .attr("transform",
+                              "translate(" + margin.left + "," + margin.top + ")");
+
+        const xScale = d3.scaleTime()
+                         .domain(d3.extent(dates))
+                         .range([0, width]);
+
+        svg.append("g")
+           .attr("transform", "translate(0," + height + ")")
+           .call(d3.axisBottom(xScale));
+
+        const yScale = d3.scaleLinear()
+                         .domain([Math.min(...prices), Math.max(...prices)])
+                         .range([height, 0]);
+
+        svg.append("g")
+           .call(d3.axisLeft(yScale));
+
+        // Daily prices
+        svg.append("path")
+           .datum(d3.zip(dates,prices))
+           .attr("fill", "none")
+           .attr("stroke", "steelblue")
+           .attr("stroke-width", 1.5)
+           .attr("d", d3.line()
+                        .x(d => xScale(d[0]))
+                        .y(d => yScale(d[1]))
+           )
+
+        // Moving Average
+        if (ma) {
+            delta = "{{ delta }}";
+            ma_dates = dates.slice(delta);
+            ma_prices = []
+            for (i = delta-1; i < dates.length; i++) {
+                sum = 0
+                for (j = i; j > i-delta; j--) {
+                    sum += prices[j]
+                }
+                ma_prices.push(sum/delta)
+            }
+
+            svg.append("path")
+               .datum(d3.zip(ma_dates,ma_prices))
+               .attr("fill", "none")
+               .attr("stroke", "red")
+               .attr("stroke-width", 1.5)
+               .attr("d", d3.line()
+                               .x(d => xScale(d[0]))
+                               .y(d => yScale(d[1]))
+               )
+        }
+
+        // Moving Average Convergence Divergence
+        if (macd && dates.length > 27) {
+            d3.select("#macd_title").text("MACD")
+            smoothing = 2;
+
+            macd_dates = dates.slice(26)
+
+            // Calculate 12-day EMA
+            sum = 0;
+            for (j = 25; j > 25-12; j--) {
+                sum += prices[j];
+            }
+            sma12 = sum/12;            
+            ema12_prices = [];
+            ema12_prices.push((prices[26] * smoothing/13) + (sma12 * (1-smoothing/13)))
+            for (i = 27; i < prices.length; i++) {
+                ema12_prices.push((prices[i] * smoothing/13) + (ema12_prices[i-27] * (1-smoothing/13)));
+            }
+
+            // Calculcate 26-day EMA
+            sum = 0;
+            for (j = 25; j >= 0; j--) {
+                sum += prices[j];
+            }
+            sma26 = sum/26;            
+            ema26_prices = [];
+            ema26_prices.push((prices[26] * smoothing/27) + (sma26 * (1-smoothing/27)))
+            for (i = 27; i < prices.length; i++) {
+                ema26_prices.push((prices[i] * smoothing/27) + (ema26_prices[i-27] * (1-smoothing/27)));
+            }
+
+            // Calculate MACD
+            macd = ema12_prices.map((p,i) => p - ema26_prices[i])
+
+            // Calculate Signal Line: 9-Day EMA of MACD
+            macd_signal_dates = macd_dates.slice(9)
+            sum = 0;
+            for (j = 8; j >= 0; j--) {
+                sum += macd[j];
+            }
+            sma9 = sum/9;            
+            macd_signal = [];
+            macd_signal.push((macd[9] * smoothing/10) + (sma9 * (1-smoothing/10)))
+            for (i = 10; i < macd.length; i++) {
+                macd_signal.push((macd[i] * smoothing/10) + (macd[i-10] * (1-smoothing/10)));
+            }
+
+            // Draw plot axes
+            var macd_margin = {top: 10, right: 30, bottom: 30, left: 60},
+                macd_width = 1200 - margin.left - margin.right,
+                macd_height = 150 - margin.top - margin.bottom;
+
+            const macd_svg = d3.select("#macd")
+                      .append("svg")
+                        .attr("width", macd_width + macd_margin.left + macd_margin.right)
+                        .attr("height", macd_height + macd_margin.top + macd_margin.bottom)
+                      .append("g")
+                        .attr("transform",
+                              "translate(" + macd_margin.left + "," + macd_margin.top + ")");
+
+            const macd_xScale = d3.scaleTime()
+                            .domain(d3.extent(macd_dates))
+                            .range([0, macd_width]);
+
+            macd_svg.append("g")
+                    .attr("transform", "translate(0," + macd_height + ")")
+                    .call(d3.axisBottom(macd_xScale));
+
+            const macd_yScale = d3.scaleLinear()
+                            .domain([Math.min(...macd), Math.max(...macd)])
+                            .range([macd_height, 0]);
+
+            macd_svg.append("g")
+                    .call(d3.axisLeft(macd_yScale));
+
+            // Plot MACD 
+            macd_svg.append("path")
+               .datum(d3.zip(macd_dates,macd))
+               .attr("fill", "none")
+               .attr("stroke", "steelblue")
+               .attr("stroke-width", 1.5)
+               .attr("d", d3.line()
+                            .x(d => macd_xScale(d[0]))
+                            .y(d => macd_yScale(d[1]))
+            ) 
+
+            // Plot Signal Line 
+            macd_svg.append("path")
+               .datum(d3.zip(macd_signal_dates,macd_signal))
+               .attr("fill", "none")
+               .attr("stroke", "orange")
+               .attr("stroke-width", 1.5)
+               .attr("d", d3.line()
+                            .x(d => macd_xScale(d[0]))
+                            .y(d => macd_yScale(d[1]))
+            ) 
+        }
+
+        // Relative Strength Index
+        if (rsi && dates.length > 15) {
+            d3.select("#rsi_title").text("RSI")
+            sum_gain = 0
+            sum_loss = 0
+            for (i = 1; i < 15; i++) {
+                profit = (prices[i] - prices[i-1]) / (prices[i-1])
+                if (profit > 0) {
+                    sum_gain += profit;
+                } else {
+                    sum_loss += -profit;
+                }
+            }
+
+            const average = (array) => array.reduce((a, b) => a + b) / array.length;
+            avg_gain = sum_gain / 14;
+            avg_loss = sum_loss / 14;
+            
+            rsi_dates = dates.slice(14);
+            rsi = [];
+            RS = avg_gain / avg_loss;
+            rsi.push((100 - (100/(1+RS))));
+
+            for (i = 15; i < prices.length; i++) {
+                profit = (prices[i] - prices[i-1]) / (prices[i-1])
+                if (profit > 0) {
+                    avg_gain = (avg_gain * 13 + profit) / 14;
+                    avg_loss = (avg_loss * 13 + 0) / 14;
+                } else {
+                    avg_gain = (avg_gain * 13 + 0) / 14;
+                    avg_loss = (avg_loss * 13 - profit) / 14;
+                }
+                RS = avg_gain / avg_loss;
+                rsi.push((100 - (100/(1+RS))));
+            }
+
+            // Draw plot axes
+            var rsi_margin = {top: 10, right: 30, bottom: 30, left: 60},
+                rsi_width = 1200 - margin.left - margin.right,
+                rsi_height = 150 - margin.top - margin.bottom;
+
+            const rsi_svg = d3.select("#rsi")
+                      .append("svg")
+                        .attr("width", rsi_width + rsi_margin.left + rsi_margin.right)
+                        .attr("height", rsi_height + rsi_margin.top + rsi_margin.bottom)
+                      .append("g")
+                        .attr("transform",
+                              "translate(" + rsi_margin.left + "," + rsi_margin.top + ")");
+
+            const rsi_xScale = d3.scaleTime()
+                            .domain(d3.extent(rsi_dates))
+                            .range([0, rsi_width]);
+
+            rsi_svg.append("g")
+                    .attr("transform", "translate(0," + rsi_height + ")")
+                    .call(d3.axisBottom(rsi_xScale));
+
+            const rsi_yScale = d3.scaleLinear()
+                            .domain([0,100])
+                            .range([rsi_height, 0]);
+
+            rsi_svg.append("g")
+                    .call(d3.axisLeft(rsi_yScale));
+
+            // Plot MACD 
+            rsi_svg.append("path")
+               .datum(d3.zip(rsi_dates,rsi))
+               .attr("fill", "none")
+               .attr("stroke", "steelblue")
+               .attr("stroke-width", 1.5)
+               .attr("d", d3.line()
+                            .x(d => rsi_xScale(d[0]))
+                            .y(d => rsi_yScale(d[1]))
+            ) 
+
+            // Plot RSI 30 thresholds 
+            rsi_svg.append("path")
+               .datum(d3.zip(d3.extent(rsi_dates),[30,30]))
+               .attr("fill", "none")
+               .attr("stroke", "black")
+               .style("stroke-dasharray", ("3, 3"))
+               .attr("stroke-width", 1.5)
+               .attr("d", d3.line()
+                            .x(d => rsi_xScale(d[0]))
+                            .y(d => rsi_yScale(d[1]))
+            ) 
+
+            // Plot RSI 70 thresholds 
+            rsi_svg.append("path")
+               .datum(d3.zip(d3.extent(rsi_dates),[70,70]))
+               .attr("fill", "none")
+               .attr("stroke", "black")
+               .style("stroke-dasharray", ("3, 3"))
+               .attr("stroke-width", 1.5)
+               .attr("d", d3.line()
+                            .x(d => rsi_xScale(d[0]))
+                            .y(d => rsi_yScale(d[1]))
+            ) 
+        }
+    </script>
+{% endblock content %}
