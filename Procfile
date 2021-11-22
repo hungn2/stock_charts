@@ -1,1 +1,1 @@
-web: gunicorn app:stocks
+web: gunicorn stocks:app
