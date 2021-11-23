@@ -1,0 +1,7 @@
+App:
+http://stock-charts-hpn.herokuapp.com
+
+Source Code:
+https://github.com/hungn2/stock_charts
+
+Data collected from yfinance Python package

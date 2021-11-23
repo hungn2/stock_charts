@@ -179,7 +179,7 @@
                               "translate(" + macd_margin.left + "," + macd_margin.top + ")");
 
             const macd_xScale = d3.scaleTime()
-                            .domain(d3.extent(macd_dates))
+                            .domain(d3.extent(dates))
                             .range([0, macd_width]);
 
             macd_svg.append("g")
@@ -266,7 +266,7 @@
                               "translate(" + rsi_margin.left + "," + rsi_margin.top + ")");
 
             const rsi_xScale = d3.scaleTime()
-                            .domain(d3.extent(rsi_dates))
+                            .domain(d3.extent(dates))
                             .range([0, rsi_width]);
 
             rsi_svg.append("g")
@@ -293,7 +293,7 @@
 
             // Plot RSI 30 thresholds 
             rsi_svg.append("path")
-               .datum(d3.zip(d3.extent(rsi_dates),[30,30]))
+               .datum(d3.zip(d3.extent(dates),[30,30]))
                .attr("fill", "none")
                .attr("stroke", "black")
                .style("stroke-dasharray", ("3, 3"))
@@ -305,7 +305,7 @@
 
             // Plot RSI 70 thresholds 
             rsi_svg.append("path")
-               .datum(d3.zip(d3.extent(rsi_dates),[70,70]))
+               .datum(d3.zip(d3.extent(dates),[70,70]))
                .attr("fill", "none")
                .attr("stroke", "black")
                .style("stroke-dasharray", ("3, 3"))
